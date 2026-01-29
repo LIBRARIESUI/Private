@@ -2900,6 +2900,7 @@ ElementsTable.Toggle = (function()
 	return Element
 end)()
 
+-- Updated dropdown_element.lua (single-select, subtle rounded corners)
 ElementsTable.Dropdown = (function()
 	local Element = {}
 	Element.__index = Element
@@ -2907,27 +2908,32 @@ ElementsTable.Dropdown = (function()
 
 	function Element:New(Idx, Config)
 
+		-- Force single-select dropdown (ignore any Config.Multi)
 		local Dropdown = {
-			Values = Config.Values,
+			Values = Config.Values or {},
 			Value = Config.Default,
-			Multi = Config.Multi,
+			Multi = false, -- always single-select
 			Buttons = {},
 			Opened = false,
 			Type = "Dropdown",
 			Callback = Config.Callback or function() end,
 		}
 
-		if Dropdown.Multi and Config.AllowNull then
-			Dropdown.Value = {}
-		end
-
 		-- create the element frame as usual but override AutomaticSize so we can animate height (in-flow)
 		local DropdownFrame = Components.Element(Config.Title, Config.Description, self.Container, false, Config)
-		DropdownFrame.DescLabel.Size = UDim2.new(1, -170, 0, 14)
+
+		-- Make description wrap and size itself vertically (prevents overflow)
+		if DropdownFrame.DescLabel then
+			DropdownFrame.DescLabel.AutomaticSize = Enum.AutomaticSize.Y
+			DropdownFrame.DescLabel.Size = UDim2.new(1, -170, 0, 0)
+			DropdownFrame.DescLabel.TextWrapped = true
+			DropdownFrame.DescLabel.TextYAlignment = Enum.TextYAlignment.Top
+			DropdownFrame.DescLabel.ClipsDescendants = true
+		end
 
 		-- Override automatic sizing so expanding this element pushes items below
 		DropdownFrame.Frame.AutomaticSize = Enum.AutomaticSize.None
-		local collapsedHeight = 34 -- height when collapsed (showing label + select button)
+		local collapsedHeight = 34 -- moderate height when collapsed
 		DropdownFrame.Frame.Size = UDim2.new(1, 0, 0, collapsedHeight)
 
 		Dropdown.SetTitle = DropdownFrame.SetTitle
@@ -2944,7 +2950,6 @@ ElementsTable.Dropdown = (function()
 			Size = UDim2.new(1, -30, 0, 14),
 			Position = UDim2.new(0, 8, 0.5, 0),
 			AnchorPoint = Vector2.new(0, 0.5),
-			BackgroundColor3 = Color3.fromRGB(255, 255, 255),
 			BackgroundTransparency = 1,
 			TextTruncate = Enum.TextTruncate.AtEnd,
 			ThemeTag = {
@@ -2974,7 +2979,7 @@ ElementsTable.Dropdown = (function()
 			},
 		}, {
 			New("UICorner", {
-				CornerRadius = UDim.new(0, 5),
+				CornerRadius = UDim.new(0, 8), -- subtle rounded corners (not sharp, not huge)
 			}),
 			New("UIStroke", {
 				Transparency = 0.5,
@@ -2990,7 +2995,7 @@ ElementsTable.Dropdown = (function()
 		-- In-flow list container (initially hidden, sized to 0)
 		local listFrame = New("Frame", {
 			Name = "DropdownFrameScroll",
-			BackgroundColor3 = Creator.GetThemeProperty("DropdownHolder") and Creator.GetThemeProperty("DropdownHolder") or Color3.fromRGB(30,30,30),
+			BackgroundColor3 = Creator.GetThemeProperty("DropdownHolder") or Color3.fromRGB(30,30,30),
 			BackgroundTransparency = 0,
 			Size = UDim2.new(1, -10, 0, 0),
 			Position = UDim2.new(0, 5, 0, collapsedHeight),
@@ -3022,20 +3027,12 @@ ElementsTable.Dropdown = (function()
 
 		-- helper values
 		local itemHeight = 32
-		local maxVisible = 3 -- show only up to 3 items, the rest via scrolling
+		local maxVisible = 3 -- show up to 4 items, rest via scrolling
 
 		local function updateDisplayText()
 			local Str = ""
-			if Config.Multi then
-				for _, v in ipairs(Dropdown.Values or {}) do
-					if Dropdown.Value and Dropdown.Value[v] then
-						Str = Str .. v .. ", "
-					end
-				end
-				if #Str > 0 then Str = Str:sub(1, #Str - 2) end
-			else
-				Str = Dropdown.Value or ""
-			end
+			-- single-select only
+			Str = Dropdown.Value or ""
 			DropdownDisplay.Text = (Str == "" and "--" or Str)
 		end
 
@@ -3068,29 +3065,25 @@ ElementsTable.Dropdown = (function()
 					TextXAlignment = Enum.TextXAlignment.Left,
 					AutomaticSize = Enum.AutomaticSize.Y,
 					BackgroundTransparency = 1,
-					Position = UDim2.fromOffset(8, 0),
-					Size = UDim2.new(1, -8, 1, 0),
+					Position = UDim2.fromOffset(16, 0),
+					Size = UDim2.new(1, -16, 1, 0),
 					Parent = Button,
 					Name = "ButtonLabel",
 					ThemeTag = { TextColor3 = "Text" },
 				})
 
 				local selIndicator = New("Frame", {
-					Size = UDim2.new(0, 4, 0, 14),
-					Position = UDim2.fromOffset(-8, itemHeight / 2),
+					Size = UDim2.new(0, 6, 0, 18),
+					Position = UDim2.new(0, 6, 0.5, 0),
 					AnchorPoint = Vector2.new(0, 0.5),
 					BackgroundColor3 = Creator.GetThemeProperty("Accent") or Color3.fromRGB(76,194,255),
 					Parent = Button,
 				}, {
-					New("UICorner", { CornerRadius = UDim.new(0,2) })
+					New("UICorner", { CornerRadius = UDim.new(0,3) })
 				})
 
 				local function isSelected()
-					if Config.Multi then
-						return Dropdown.Value and Dropdown.Value[Value]
-					else
-						return Dropdown.Value == Value
-					end
+					return Dropdown.Value == Value
 				end
 
 				local function updateVisual()
@@ -3114,32 +3107,22 @@ ElementsTable.Dropdown = (function()
 				Button.MouseButton1Click:Connect(function()
 					local Try = not isSelected()
 
-					-- prevent de-select when only one and not allowed
-					if (not Config.AllowNull) and (not Config.Multi) and Dropdown:GetActiveValues() == 1 and not Try then
-						-- do nothing
-					else
-						if Config.Multi then
-							Dropdown.Value = Dropdown.Value or {}
-							if Try then
-								Dropdown.Value[Value] = true
-							else
-								Dropdown.Value[Value] = nil
-							end
-						else
-							Dropdown.Value = Try and Value or nil
-						end
-
-						updateVisual()
-						updateDisplayText()
-						Library:SafeCallback(Dropdown.Callback, Dropdown.Value)
-						Library:SafeCallback(Dropdown.Changed, Dropdown.Value)
-
-						-- for single select, collapse after selection
-						if not Config.Multi then
-							-- collapse
-							Dropdown:Close()
-						end
+					-- prevent de-select when only one and not allowed (respect Config.AllowNull if provided)
+					if (not Config.AllowNull) and Dropdown:GetActiveValues() == 1 and not Try then
+						-- do nothing (prevents deselect of last item)
+						return
 					end
+
+					-- single-select behavior
+					Dropdown.Value = Try and Value or nil
+
+					updateVisual()
+					updateDisplayText()
+					Library:SafeCallback(Dropdown.Callback, Dropdown.Value)
+					Library:SafeCallback(Dropdown.Changed, Dropdown.Value)
+
+					-- collapse after selection
+					Dropdown:Close()
 				end)
 
 				updateVisual()
@@ -3161,15 +3144,8 @@ ElementsTable.Dropdown = (function()
 		end
 
 		function Dropdown:GetActiveValues()
-			if Config.Multi then
-				local T = {}
-				for k, v in pairs(Dropdown.Value or {}) do
-					if v then table.insert(T, k) end
-				end
-				return T
-			else
-				return Dropdown.Value and 1 or 0
-			end
+			-- single-select only: returns 1 if has value else 0
+			return Dropdown.Value and 1 or 0
 		end
 
 		function Dropdown:Open()
@@ -3212,7 +3188,7 @@ ElementsTable.Dropdown = (function()
 			end)
 		end
 
-		-- close when clicking outside (optional, keeps behavior similar to original)
+		-- close when clicking outside (keeps behavior similar to original)
 		local outsideConn
 		outsideConn = Creator.AddSignal(UserInputService.InputBegan, function(inp)
 			if not Dropdown.Opened then return end
@@ -3249,18 +3225,15 @@ ElementsTable.Dropdown = (function()
 		end
 
 		function Dropdown:SetValue(Val)
-			if Dropdown.Multi then
-				local nTable = {}
-				for _, v in ipairs(Val or {}) do
-					if table.find(Dropdown.Values, v) then nTable[v] = true end
-				end
-				Dropdown.Value = nTable
+			-- single-select only
+			if not Val then
+				Dropdown.Value = nil
+			elseif type(Val) == "number" and Dropdown.Values[Val] ~= nil then
+				Dropdown.Value = Dropdown.Values[Val]
+			elseif table.find(Dropdown.Values, Val) then
+				Dropdown.Value = Val
 			else
-				if not Val then
-					Dropdown.Value = nil
-				elseif table.find(Dropdown.Values, Val) then
-					Dropdown.Value = Val
-				end
+				Dropdown.Value = nil
 			end
 
 			rebuildList()
@@ -3279,34 +3252,19 @@ ElementsTable.Dropdown = (function()
 		rebuildList()
 		Dropdown:Display()
 
-		-- apply default selection handling similar to original
-		local Defaults = {}
-
+		-- apply default selection handling (single-select)
+		local defaultVal = nil
 		if type(Config.Default) == "string" then
-			local Idx = table.find(Dropdown.Values, Config.Default)
-			if Idx then table.insert(Defaults, Idx) end
-		elseif type(Config.Default) == "table" then
-			for _, Value in next, Config.Default do
-				local Idx = table.find(Dropdown.Values, Value)
-				if Idx then table.insert(Defaults, Idx) end
-			end
+			defaultVal = Config.Default
 		elseif type(Config.Default) == "number" and Dropdown.Values[Config.Default] ~= nil then
-			table.insert(Defaults, Config.Default)
+			defaultVal = Dropdown.Values[Config.Default]
+		elseif type(Config.Default) == "table" then
+			-- if a table is mistakenly provided, take first entry as default
+			defaultVal = Config.Default[1]
 		end
 
-		if next(Defaults) then
-			for i = 1, #Defaults do
-				local Index = Defaults[i]
-				if Config.Multi then
-					Dropdown.Value = Dropdown.Value or {}
-					Dropdown.Value[Dropdown.Values[Index]] = true
-				else
-					Dropdown.Value = Dropdown.Values[Index]
-				end
-
-				if not Config.Multi then break end
-			end
-
+		if defaultVal and table.find(Dropdown.Values, defaultVal) then
+			Dropdown.Value = defaultVal
 			rebuildList()
 			Dropdown:Display()
 		end
