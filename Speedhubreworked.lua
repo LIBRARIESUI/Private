@@ -2900,47 +2900,100 @@ ElementsTable.Toggle = (function()
 	return Element
 end)()
 
--- Updated dropdown_element.lua (single-select, subtle rounded corners)
+-- dropdown_element.lua
+-- Updated: 2026-01-29
+-- Changes:
+--  - Foldable element (small fold toggle at left of title)
+--  - Title/Description auto-wrap & auto-resize based on text (uses TextService measurement)
+--  - Prevent text overflow (TextWrapped/AutomaticSize set)
+--  - Softer (rounded) dropdown and list corners
+--  - Improved sizing logic so the element resizes when title/description change
+-- Note: This file assumes the environment provides Creator, New, Library and other utilities
+--       used originally. We add local service references used by the element.
+
+local TweenService = game:GetService("TweenService")
+local TextService = game:GetService("TextService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer and LocalPlayer:GetMouse()
+
 ElementsTable.Dropdown = (function()
 	local Element = {}
 	Element.__index = Element
 	Element.__type = "Dropdown"
 
+	-- helper: measure text height for a given width
+	local function measureTextHeight(text, textSize, font, maxWidth)
+		if not text or text == "" then return 0 end
+		local size = TextService:GetTextSize(text, textSize, font, Vector2.new(maxWidth, math.huge))
+		return size.Y
+	end
+
 	function Element:New(Idx, Config)
 
-		-- Force single-select dropdown (ignore any Config.Multi)
 		local Dropdown = {
-			Values = Config.Values or {},
+			Values = Config.Values,
 			Value = Config.Default,
-			Multi = false, -- always single-select
+			Multi = Config.Multi,
 			Buttons = {},
 			Opened = false,
 			Type = "Dropdown",
 			Callback = Config.Callback or function() end,
+			Folded = false,
 		}
+
+		if Dropdown.Multi and Config.AllowNull then
+			Dropdown.Value = {}
+		end
 
 		-- create the element frame as usual but override AutomaticSize so we can animate height (in-flow)
 		local DropdownFrame = Components.Element(Config.Title, Config.Description, self.Container, false, Config)
 
-		-- Make description wrap and size itself vertically (prevents overflow)
+		-- Ensure description/title wrap and auto-size (so we can compute heights)
 		if DropdownFrame.DescLabel then
-			DropdownFrame.DescLabel.AutomaticSize = Enum.AutomaticSize.Y
-			DropdownFrame.DescLabel.Size = UDim2.new(1, -170, 0, 0)
 			DropdownFrame.DescLabel.TextWrapped = true
-			DropdownFrame.DescLabel.TextYAlignment = Enum.TextYAlignment.Top
-			DropdownFrame.DescLabel.ClipsDescendants = true
+			DropdownFrame.DescLabel.AutomaticSize = Enum.AutomaticSize.Y
+			-- give the description room by default, but we'll measure properly below
+			DropdownFrame.DescLabel.Size = UDim2.new(1, -170, 0, 14)
+		end
+		-- Some implementations expose a TitleLabel - prefer it if present
+		if DropdownFrame.TitleLabel then
+			DropdownFrame.TitleLabel.TextWrapped = true
+			DropdownFrame.TitleLabel.AutomaticSize = Enum.AutomaticSize.Y
 		end
 
-		-- Override automatic sizing so expanding this element pushes items below
+		-- Override automatic sizing so expanding this element pushes items below.
+		-- We'll manage sizing with measured heights.
 		DropdownFrame.Frame.AutomaticSize = Enum.AutomaticSize.None
-		local collapsedHeight = 34 -- moderate height when collapsed
-		DropdownFrame.Frame.Size = UDim2.new(1, 0, 0, collapsedHeight)
+
+		-- base paddings/heights (these are pixel values used to compute totals)
+		local titleTopPadding = 6
+		local titleBottomPadding = 6
+		local controlTopPadding = 6
+		local collapsedBase = 8 + 18 + 8 -- approximate top padding + title height + bottom padding
+		local collapsedHeight = 34 -- will be recomputed after measuring text sizes
 
 		Dropdown.SetTitle = DropdownFrame.SetTitle
 		Dropdown.SetDesc = DropdownFrame.SetDesc
 		Dropdown.Visible = DropdownFrame.Visible
 		Dropdown.Elements = DropdownFrame
 
+		-- Add a small fold toggle button on the left of the title area
+		local foldBtn = New("TextButton", {
+			Size = UDim2.new(0, 18, 0, 18),
+			Position = UDim2.new(0, 8, 0, 8),
+			AnchorPoint = Vector2.new(0, 0),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.SourceSans,
+			Text = "▸", -- triangle caret
+			TextSize = 16,
+			TextColor3 = Color3.fromRGB(200, 200, 200),
+			ZIndex = 5,
+			Parent = DropdownFrame.Frame,
+		})
+
+		-- Make the dropdown display label and icon
 		local DropdownDisplay = New("TextLabel", {
 			FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal),
 			Text = "Value",
@@ -2979,7 +3032,7 @@ ElementsTable.Dropdown = (function()
 			},
 		}, {
 			New("UICorner", {
-				CornerRadius = UDim.new(0, 8), -- subtle rounded corners (not sharp, not huge)
+				CornerRadius = UDim.new(0, 8), -- softened corners
 			}),
 			New("UIStroke", {
 				Transparency = 0.5,
@@ -2995,7 +3048,7 @@ ElementsTable.Dropdown = (function()
 		-- In-flow list container (initially hidden, sized to 0)
 		local listFrame = New("Frame", {
 			Name = "DropdownFrameScroll",
-			BackgroundColor3 = Creator.GetThemeProperty("DropdownHolder") or Color3.fromRGB(30,30,30),
+			BackgroundColor3 = Creator.GetThemeProperty("DropdownHolder") and Creator.GetThemeProperty("DropdownHolder") or Color3.fromRGB(30,30,30),
 			BackgroundTransparency = 0,
 			Size = UDim2.new(1, -10, 0, 0),
 			Position = UDim2.new(0, 5, 0, collapsedHeight),
@@ -3003,7 +3056,7 @@ ElementsTable.Dropdown = (function()
 			ClipsDescendants = false,
 			Parent = DropdownFrame.Frame,
 		}, {
-			New("UICorner", { CornerRadius = UDim.new(0, 7) }),
+			New("UICorner", { CornerRadius = UDim.new(0, 10) }), -- rounded list holder
 		})
 
 		local listScroll = New("ScrollingFrame", {
@@ -3027,12 +3080,20 @@ ElementsTable.Dropdown = (function()
 
 		-- helper values
 		local itemHeight = 32
-		local maxVisible = 3 -- show up to 4 items, rest via scrolling
+		local maxVisible = 3 -- show only up to 3 items, the rest via scrolling
 
 		local function updateDisplayText()
 			local Str = ""
-			-- single-select only
-			Str = Dropdown.Value or ""
+			if Config.Multi then
+				for _, v in ipairs(Dropdown.Values or {}) do
+					if Dropdown.Value and Dropdown.Value[v] then
+						Str = Str .. v .. ", "
+					end
+				end
+				if #Str > 0 then Str = Str:sub(1, #Str - 2) end
+			else
+				Str = Dropdown.Value or ""
+			end
 			DropdownDisplay.Text = (Str == "" and "--" or Str)
 		end
 
@@ -3057,6 +3118,9 @@ ElementsTable.Dropdown = (function()
 					},
 				})
 
+				-- rounded inner container so options are not sharp
+				local optionCorner = New("UICorner", { CornerRadius = UDim.new(0, 6), Parent = Button })
+
 				local lbl = New("TextLabel", {
 					FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json"),
 					Text = Value,
@@ -3064,26 +3128,31 @@ ElementsTable.Dropdown = (function()
 					TextSize = 13,
 					TextXAlignment = Enum.TextXAlignment.Left,
 					AutomaticSize = Enum.AutomaticSize.Y,
+					TextWrapped = true,
 					BackgroundTransparency = 1,
-					Position = UDim2.fromOffset(16, 0),
-					Size = UDim2.new(1, -16, 1, 0),
+					Position = UDim2.fromOffset(8, 0),
+					Size = UDim2.new(1, -8, 1, 0),
 					Parent = Button,
 					Name = "ButtonLabel",
 					ThemeTag = { TextColor3 = "Text" },
 				})
 
 				local selIndicator = New("Frame", {
-					Size = UDim2.new(0, 6, 0, 18),
-					Position = UDim2.new(0, 6, 0.5, 0),
+					Size = UDim2.new(0, 4, 0, 14),
+					Position = UDim2.fromOffset(-8, itemHeight / 2),
 					AnchorPoint = Vector2.new(0, 0.5),
 					BackgroundColor3 = Creator.GetThemeProperty("Accent") or Color3.fromRGB(76,194,255),
 					Parent = Button,
 				}, {
-					New("UICorner", { CornerRadius = UDim.new(0,3) })
+					New("UICorner", { CornerRadius = UDim.new(0,2) })
 				})
 
 				local function isSelected()
-					return Dropdown.Value == Value
+					if Config.Multi then
+						return Dropdown.Value and Dropdown.Value[Value]
+					else
+						return Dropdown.Value == Value
+					end
 				end
 
 				local function updateVisual()
@@ -3107,22 +3176,32 @@ ElementsTable.Dropdown = (function()
 				Button.MouseButton1Click:Connect(function()
 					local Try = not isSelected()
 
-					-- prevent de-select when only one and not allowed (respect Config.AllowNull if provided)
-					if (not Config.AllowNull) and Dropdown:GetActiveValues() == 1 and not Try then
-						-- do nothing (prevents deselect of last item)
-						return
+					-- prevent de-select when only one and not allowed
+					if (not Config.AllowNull) and (not Config.Multi) and Dropdown:GetActiveValues() == 1 and not Try then
+						-- do nothing
+					else
+						if Config.Multi then
+							Dropdown.Value = Dropdown.Value or {}
+							if Try then
+								Dropdown.Value[Value] = true
+							else
+								Dropdown.Value[Value] = nil
+							end
+						else
+							Dropdown.Value = Try and Value or nil
+						end
+
+						updateVisual()
+						updateDisplayText()
+						Library:SafeCallback(Dropdown.Callback, Dropdown.Value)
+						Library:SafeCallback(Dropdown.Changed, Dropdown.Value)
+
+						-- for single select, collapse after selection
+						if not Config.Multi then
+							-- collapse
+							Dropdown:Close()
+						end
 					end
-
-					-- single-select behavior
-					Dropdown.Value = Try and Value or nil
-
-					updateVisual()
-					updateDisplayText()
-					Library:SafeCallback(Dropdown.Callback, Dropdown.Value)
-					Library:SafeCallback(Dropdown.Changed, Dropdown.Value)
-
-					-- collapse after selection
-					Dropdown:Close()
 				end)
 
 				updateVisual()
@@ -3138,18 +3217,87 @@ ElementsTable.Dropdown = (function()
 			end)
 		end
 
+		-- COMPUTE COLLAPSED HEIGHT BASED ON TITLE/DESC
+		local function recomputeCollapsedHeight()
+			pcall(function()
+				-- determine available width for the title/desc text (approx)
+				-- we try to infer from parent container; fallback to 300 px
+				local containerWidth = (self.Container and self.Container.AbsoluteSize and self.Container.AbsoluteSize.X) or 300
+				-- reserve space for the dropdown control at right (approx 170 used earlier)
+				local availableTextWidth = math.max(40, containerWidth - 170)
+
+				-- measure title and desc text sizes using config (if provided)
+				local titleText = Config.Title or (DropdownFrame.TitleLabel and DropdownFrame.TitleLabel.Text) or ""
+				local descText = Config.Description or (DropdownFrame.DescLabel and DropdownFrame.DescLabel.Text) or ""
+
+				-- Title font/size heuristics (match component)
+				local titleSize = 14
+				local titleFont = Enum.Font.Gotham -- fallback; exact FontFace may differ
+				if DropdownFrame.TitleLabel then
+					titleSize = DropdownFrame.TitleLabel.TextSize or titleSize
+					-- TitleLabel might expose Font/FontFace; try to read Font if present
+					if DropdownFrame.TitleLabel.Font then titleFont = DropdownFrame.TitleLabel.Font end
+				end
+
+				local descSize = 13
+				local descFont = Enum.Font.Gotham
+				if DropdownFrame.DescLabel then
+					descSize = DropdownFrame.DescLabel.TextSize or descSize
+					if DropdownFrame.DescLabel.Font then descFont = DropdownFrame.DescLabel.Font end
+				end
+
+				-- measure heights
+				local titleH = measureTextHeight(titleText, titleSize, titleFont, availableTextWidth)
+				local descH = measureTextHeight(descText, descSize, descFont, availableTextWidth)
+
+				-- minimal title height fallback
+				if titleH < 16 then titleH = 16 end
+
+				-- compute collapsedHeight (title area + description area + paddings)
+				collapsedHeight = math.ceil(titleTopPadding + titleH + titleBottomPadding)
+				-- include description only if it exists and not folded
+				if descText and descText ~= "" then
+					collapsedHeight = collapsedHeight + descH + controlTopPadding
+				end
+
+				-- ensure a minimum to comfortably contain dropdown control (like original 34)
+				if collapsedHeight < 34 then collapsedHeight = 34 end
+
+				-- set initial frame size (if not open and not folded)
+				if not Dropdown.Opened and not Dropdown.Folded then
+					DropdownFrame.Frame.Size = UDim2.new(1, 0, 0, collapsedHeight)
+				end
+
+				-- re-position listFrame to sit below the collapsed frame
+				listFrame.Position = UDim2.new(0, 5, 0, collapsedHeight)
+			end)
+		end
+
+		-- call once and also after a small delay to let UI load
+		recomputeCollapsedHeight()
+		delay(0.02, recomputeCollapsedHeight)
+
 		-- expose methods
 		function Dropdown:Display()
 			updateDisplayText()
+			-- remeasure if texts changed via SetTitle/SetDesc
+			recomputeCollapsedHeight()
 		end
 
 		function Dropdown:GetActiveValues()
-			-- single-select only: returns 1 if has value else 0
-			return Dropdown.Value and 1 or 0
+			if Config.Multi then
+				local T = {}
+				for k, v in pairs(Dropdown.Value or {}) do
+					if v then table.insert(T, k) end
+				end
+				return T
+			else
+				return Dropdown.Value and 1 or 0
+			end
 		end
 
 		function Dropdown:Open()
-			if Dropdown.Opened then return end
+			if Dropdown.Opened or Dropdown.Folded then return end
 			Dropdown.Opened = true
 
 			-- rebuild list to ensure it's current
@@ -3188,6 +3336,45 @@ ElementsTable.Dropdown = (function()
 			end)
 		end
 
+		-- Fold/unfold logic
+		local function setFolded(state)
+			if state == Dropdown.Folded then return end
+			Dropdown.Folded = state
+			-- rotate caret
+			foldBtn.Text = state and "▾" or "▸"
+			-- if folding, close open list
+			if state then
+				Dropdown:Close()
+				-- hide controls and description (keep title visible)
+				if DropdownFrame.DescLabel then DropdownFrame.DescLabel.Visible = false end
+				DropdownInner.Visible = false
+				listFrame.Visible = false
+				-- set frame to only title height (measure title)
+				local containerWidth = (self.Container and self.Container.AbsoluteSize and self.Container.AbsoluteSize.X) or 300
+				local availableTextWidth = math.max(40, containerWidth - 170)
+				local titleText = Config.Title or (DropdownFrame.TitleLabel and DropdownFrame.TitleLabel.Text) or ""
+				local titleSize = (DropdownFrame.TitleLabel and DropdownFrame.TitleLabel.TextSize) or 14
+				local titleFont = (DropdownFrame.TitleLabel and DropdownFrame.TitleLabel.Font) or Enum.Font.Gotham
+				local titleH = measureTextHeight(titleText, titleSize, titleFont, availableTextWidth)
+				if titleH < 16 then titleH = 16 end
+				local targetH = math.ceil(titleTopPadding + titleH + titleBottomPadding)
+				if targetH < 30 then targetH = 30 end
+				TweenService:Create(DropdownFrame.Frame, TweenInfo.new(0.18), {Size = UDim2.new(1, 0, 0, targetH)}):Play()
+			else
+				-- restore description and control
+				if DropdownFrame.DescLabel then DropdownFrame.DescLabel.Visible = true end
+				DropdownInner.Visible = true
+				-- recompute collapsedHeight and animate to it
+				recomputeCollapsedHeight()
+				TweenService:Create(DropdownFrame.Frame, TweenInfo.new(0.18), {Size = UDim2.new(1, 0, 0, collapsedHeight)}):Play()
+			end
+		end
+
+		-- wire fold button
+		foldBtn.MouseButton1Click:Connect(function()
+			setFolded(not Dropdown.Folded)
+		end)
+
 		-- close when clicking outside (keeps behavior similar to original)
 		local outsideConn
 		outsideConn = Creator.AddSignal(UserInputService.InputBegan, function(inp)
@@ -3225,15 +3412,18 @@ ElementsTable.Dropdown = (function()
 		end
 
 		function Dropdown:SetValue(Val)
-			-- single-select only
-			if not Val then
-				Dropdown.Value = nil
-			elseif type(Val) == "number" and Dropdown.Values[Val] ~= nil then
-				Dropdown.Value = Dropdown.Values[Val]
-			elseif table.find(Dropdown.Values, Val) then
-				Dropdown.Value = Val
+			if Dropdown.Multi then
+				local nTable = {}
+				for _, v in ipairs(Val or {}) do
+					if table.find(Dropdown.Values, v) then nTable[v] = true end
+				end
+				Dropdown.Value = nTable
 			else
-				Dropdown.Value = nil
+				if not Val then
+					Dropdown.Value = nil
+				elseif table.find(Dropdown.Values, Val) then
+					Dropdown.Value = Val
+				end
 			end
 
 			rebuildList()
@@ -3252,19 +3442,34 @@ ElementsTable.Dropdown = (function()
 		rebuildList()
 		Dropdown:Display()
 
-		-- apply default selection handling (single-select)
-		local defaultVal = nil
+		-- apply default selection handling similar to original
+		local Defaults = {}
+
 		if type(Config.Default) == "string" then
-			defaultVal = Config.Default
-		elseif type(Config.Default) == "number" and Dropdown.Values[Config.Default] ~= nil then
-			defaultVal = Dropdown.Values[Config.Default]
+			local Idx = table.find(Dropdown.Values, Config.Default)
+			if Idx then table.insert(Defaults, Idx) end
 		elseif type(Config.Default) == "table" then
-			-- if a table is mistakenly provided, take first entry as default
-			defaultVal = Config.Default[1]
+			for _, Value in next, Config.Default do
+				local Idx = table.find(Dropdown.Values, Value)
+				if Idx then table.insert(Defaults, Idx) end
+			end
+		elseif type(Config.Default) == "number" and Dropdown.Values[Config.Default] ~= nil then
+			table.insert(Defaults, Config.Default)
 		end
 
-		if defaultVal and table.find(Dropdown.Values, defaultVal) then
-			Dropdown.Value = defaultVal
+		if next(Defaults) then
+			for i = 1, #Defaults do
+				local Index = Defaults[i]
+				if Config.Multi then
+					Dropdown.Value = Dropdown.Value or {}
+					Dropdown.Value[Dropdown.Values[Index]] = true
+				else
+					Dropdown.Value = Dropdown.Values[Index]
+				end
+
+				if not Config.Multi then break end
+			end
+
 			rebuildList()
 			Dropdown:Display()
 		end
