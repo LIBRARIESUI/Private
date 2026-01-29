@@ -3516,28 +3516,35 @@ ElementsTable.StatusBox = (function()
 		end
 
 		local function refreshCanvas()
-			local text = content.Text ~= "" and content.Text or " "
-			local size = TextService:GetTextSize(
-				text,
-				content.TextSize,
-				content.Font,
-				Vector2.new(1e6, 1e6)
-			)
+	local text = content.Text ~= "" and content.Text or " "
+	local bounds = TextService:GetTextSize(
+		text,
+		content.TextSize,
+		content.Font,
+		Vector2.new(scroll.AbsoluteSize.X, math.huge)
+	)
 
-			local padX, padY = 12, 8
+	local padX, padY = 12, 8
 
-			content.Size = UDim2.new(
-				0, math.ceil(size.X),
-				0, math.ceil(size.Y)
-			)
+	content.Size = UDim2.new(
+		0, bounds.X,
+		0, bounds.Y
+	)
 
-			scroll.CanvasSize = UDim2.new(
-				0, content.AbsoluteSize.X + padX,
-				0, content.AbsoluteSize.Y + padY
-			)
+	scroll.CanvasSize = UDim2.new(
+		0, bounds.X + padX,
+		0, bounds.Y + padY
+	)
 
-			resizeContainer()
-		end
+	local desiredHeight = bounds.Y + 38
+	local clampedHeight = math.clamp(desiredHeight, minHeight, maxHeight)
+
+	container.Size = UDim2.new(1, 0, 0, clampedHeight)
+
+	scroll.ScrollBarImageTransparency =
+		(bounds.Y > scroll.AbsoluteSize.Y or bounds.X > scroll.AbsoluteSize.X)
+		and 0 or 1
+end
 
 		-- =========================
 		-- Public API
