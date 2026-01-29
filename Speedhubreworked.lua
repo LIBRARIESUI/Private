@@ -38,6 +38,7 @@ local Themes = {
     Names = {
         "SpeedHubX",
         "MidnightBlue",
+        "VSC Dark High Contrast",
     },
     SpeedHubX = {
         Name = "SpeedHubX",
@@ -114,7 +115,55 @@ local Themes = {
         Hover = Color3.fromRGB(0, 200, 255),
         HoverChange = 0.08,
     },
+    ["VSC Dark High Contrast"] = {
+        Name = "VSC Dark High Contrast",
+        Accent = Color3.fromRGB(86, 156, 214), -- #569cd6
+
+        AcrylicMain = Color3.fromRGB(0, 0, 0), -- #000000
+        AcrylicBorder = Color3.fromRGB(255, 255, 255), -- #FFFFFF
+        AcrylicGradient = ColorSequence.new(Color3.fromRGB(0, 0, 0), Color3.fromRGB(0, 0, 0)),
+        AcrylicNoise = 1,
+
+        TitleBarLine = Color3.fromRGB(255, 255, 255),
+        Tab = Color3.fromRGB(255, 255, 255),
+
+        Element = Color3.fromRGB(0, 0, 0),
+        ElementBorder = Color3.fromRGB(255, 255, 255),
+        InElementBorder = Color3.fromRGB(86, 156, 214),
+        ElementTransparency = 0,
+
+        ToggleSlider = Color3.fromRGB(86, 156, 214),
+        ToggleToggled = Color3.fromRGB(0, 0, 0),
+
+        SliderRail = Color3.fromRGB(86, 156, 214),
+
+        DropdownFrame = Color3.fromRGB(0, 0, 0),
+        DropdownHolder = Color3.fromRGB(0, 0, 0),
+        DropdownBorder = Color3.fromRGB(255, 255, 255),
+        DropdownOption = Color3.fromRGB(255, 255, 255),
+
+        Keybind = Color3.fromRGB(0, 0, 0),
+
+        Input = Color3.fromRGB(0, 0, 0),
+        InputFocused = Color3.fromRGB(0, 0, 0),
+        InputIndicator = Color3.fromRGB(124, 124, 124), -- #7c7c7c
+
+        Dialog = Color3.fromRGB(0, 0, 0),
+        DialogHolder = Color3.fromRGB(0, 0, 0),
+        DialogHolderLine = Color3.fromRGB(255, 255, 255),
+        DialogButton = Color3.fromRGB(0, 0, 0),
+        DialogButtonBorder = Color3.fromRGB(255, 255, 255),
+        DialogBorder = Color3.fromRGB(255, 255, 255),
+        DialogInput = Color3.fromRGB(0, 0, 0),
+        DialogInputLine = Color3.fromRGB(86, 156, 214),
+
+        Text = Color3.fromRGB(255, 255, 255), -- #FFFFFF
+        SubText = Color3.fromRGB(157, 157, 157), -- #9D9D9D
+        Hover = Color3.fromRGB(56, 58, 73), -- #383a49
+        HoverChange = 0.1,
+    },
 }
+
 local Library = {
 	Version = "1.5.0",
 
