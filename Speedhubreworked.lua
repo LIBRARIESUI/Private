@@ -2900,35 +2900,10 @@ ElementsTable.Toggle = (function()
 	return Element
 end)()
 
--- dropdown_element.lua
--- Updated: 2026-01-29
--- Changes:
---  - Foldable element (small fold toggle at left of title)
---  - Title/Description auto-wrap & auto-resize based on text (uses TextService measurement)
---  - Prevent text overflow (TextWrapped/AutomaticSize set)
---  - Softer (rounded) dropdown and list corners
---  - Improved sizing logic so the element resizes when title/description change
--- Note: This file assumes the environment provides Creator, New, Library and other utilities
---       used originally. We add local service references used by the element.
-
-local TweenService = game:GetService("TweenService")
-local TextService = game:GetService("TextService")
-local UserInputService = game:GetService("UserInputService")
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer and LocalPlayer:GetMouse()
-
 ElementsTable.Dropdown = (function()
 	local Element = {}
 	Element.__index = Element
 	Element.__type = "Dropdown"
-
-	-- helper: measure text height for a given width
-	local function measureTextHeight(text, textSize, font, maxWidth)
-		if not text or text == "" then return 0 end
-		local size = TextService:GetTextSize(text, textSize, font, Vector2.new(maxWidth, math.huge))
-		return size.Y
-	end
 
 	function Element:New(Idx, Config)
 
@@ -2940,7 +2915,6 @@ ElementsTable.Dropdown = (function()
 			Opened = false,
 			Type = "Dropdown",
 			Callback = Config.Callback or function() end,
-			Folded = false,
 		}
 
 		if Dropdown.Multi and Config.AllowNull then
@@ -2949,51 +2923,18 @@ ElementsTable.Dropdown = (function()
 
 		-- create the element frame as usual but override AutomaticSize so we can animate height (in-flow)
 		local DropdownFrame = Components.Element(Config.Title, Config.Description, self.Container, false, Config)
+		DropdownFrame.DescLabel.Size = UDim2.new(1, -170, 0, 14)
 
-		-- Ensure description/title wrap and auto-size (so we can compute heights)
-		if DropdownFrame.DescLabel then
-			DropdownFrame.DescLabel.TextWrapped = true
-			DropdownFrame.DescLabel.AutomaticSize = Enum.AutomaticSize.Y
-			-- give the description room by default, but we'll measure properly below
-			DropdownFrame.DescLabel.Size = UDim2.new(1, -170, 0, 14)
-		end
-		-- Some implementations expose a TitleLabel - prefer it if present
-		if DropdownFrame.TitleLabel then
-			DropdownFrame.TitleLabel.TextWrapped = true
-			DropdownFrame.TitleLabel.AutomaticSize = Enum.AutomaticSize.Y
-		end
-
-		-- Override automatic sizing so expanding this element pushes items below.
-		-- We'll manage sizing with measured heights.
+		-- Override automatic sizing so expanding this element pushes items below
 		DropdownFrame.Frame.AutomaticSize = Enum.AutomaticSize.None
-
-		-- base paddings/heights (these are pixel values used to compute totals)
-		local titleTopPadding = 6
-		local titleBottomPadding = 6
-		local controlTopPadding = 6
-		local collapsedBase = 8 + 18 + 8 -- approximate top padding + title height + bottom padding
-		local collapsedHeight = 34 -- will be recomputed after measuring text sizes
+		local collapsedHeight = 34 -- height when collapsed (showing label + select button)
+		DropdownFrame.Frame.Size = UDim2.new(1, 0, 0, collapsedHeight)
 
 		Dropdown.SetTitle = DropdownFrame.SetTitle
 		Dropdown.SetDesc = DropdownFrame.SetDesc
 		Dropdown.Visible = DropdownFrame.Visible
 		Dropdown.Elements = DropdownFrame
 
-		-- Add a small fold toggle button on the left of the title area
-		local foldBtn = New("TextButton", {
-			Size = UDim2.new(0, 18, 0, 18),
-			Position = UDim2.new(0, 8, 0, 8),
-			AnchorPoint = Vector2.new(0, 0),
-			BackgroundTransparency = 1,
-			Font = Enum.Font.SourceSans,
-			Text = "▸", -- triangle caret
-			TextSize = 16,
-			TextColor3 = Color3.fromRGB(200, 200, 200),
-			ZIndex = 5,
-			Parent = DropdownFrame.Frame,
-		})
-
-		-- Make the dropdown display label and icon
 		local DropdownDisplay = New("TextLabel", {
 			FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal),
 			Text = "Value",
@@ -3003,6 +2944,7 @@ ElementsTable.Dropdown = (function()
 			Size = UDim2.new(1, -30, 0, 14),
 			Position = UDim2.new(0, 8, 0.5, 0),
 			AnchorPoint = Vector2.new(0, 0.5),
+			BackgroundColor3 = Color3.fromRGB(255, 255, 255),
 			BackgroundTransparency = 1,
 			TextTruncate = Enum.TextTruncate.AtEnd,
 			ThemeTag = {
@@ -3032,7 +2974,7 @@ ElementsTable.Dropdown = (function()
 			},
 		}, {
 			New("UICorner", {
-				CornerRadius = UDim.new(0, 8), -- softened corners
+				CornerRadius = UDim.new(0, 5),
 			}),
 			New("UIStroke", {
 				Transparency = 0.5,
@@ -3056,7 +2998,7 @@ ElementsTable.Dropdown = (function()
 			ClipsDescendants = false,
 			Parent = DropdownFrame.Frame,
 		}, {
-			New("UICorner", { CornerRadius = UDim.new(0, 10) }), -- rounded list holder
+			New("UICorner", { CornerRadius = UDim.new(0, 7) }),
 		})
 
 		local listScroll = New("ScrollingFrame", {
@@ -3118,9 +3060,6 @@ ElementsTable.Dropdown = (function()
 					},
 				})
 
-				-- rounded inner container so options are not sharp
-				local optionCorner = New("UICorner", { CornerRadius = UDim.new(0, 6), Parent = Button })
-
 				local lbl = New("TextLabel", {
 					FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json"),
 					Text = Value,
@@ -3128,7 +3067,6 @@ ElementsTable.Dropdown = (function()
 					TextSize = 13,
 					TextXAlignment = Enum.TextXAlignment.Left,
 					AutomaticSize = Enum.AutomaticSize.Y,
-					TextWrapped = true,
 					BackgroundTransparency = 1,
 					Position = UDim2.fromOffset(8, 0),
 					Size = UDim2.new(1, -8, 1, 0),
@@ -3217,71 +3155,9 @@ ElementsTable.Dropdown = (function()
 			end)
 		end
 
-		-- COMPUTE COLLAPSED HEIGHT BASED ON TITLE/DESC
-		local function recomputeCollapsedHeight()
-			pcall(function()
-				-- determine available width for the title/desc text (approx)
-				-- we try to infer from parent container; fallback to 300 px
-				local containerWidth = (self.Container and self.Container.AbsoluteSize and self.Container.AbsoluteSize.X) or 300
-				-- reserve space for the dropdown control at right (approx 170 used earlier)
-				local availableTextWidth = math.max(40, containerWidth - 170)
-
-				-- measure title and desc text sizes using config (if provided)
-				local titleText = Config.Title or (DropdownFrame.TitleLabel and DropdownFrame.TitleLabel.Text) or ""
-				local descText = Config.Description or (DropdownFrame.DescLabel and DropdownFrame.DescLabel.Text) or ""
-
-				-- Title font/size heuristics (match component)
-				local titleSize = 14
-				local titleFont = Enum.Font.Gotham -- fallback; exact FontFace may differ
-				if DropdownFrame.TitleLabel then
-					titleSize = DropdownFrame.TitleLabel.TextSize or titleSize
-					-- TitleLabel might expose Font/FontFace; try to read Font if present
-					if DropdownFrame.TitleLabel.Font then titleFont = DropdownFrame.TitleLabel.Font end
-				end
-
-				local descSize = 13
-				local descFont = Enum.Font.Gotham
-				if DropdownFrame.DescLabel then
-					descSize = DropdownFrame.DescLabel.TextSize or descSize
-					if DropdownFrame.DescLabel.Font then descFont = DropdownFrame.DescLabel.Font end
-				end
-
-				-- measure heights
-				local titleH = measureTextHeight(titleText, titleSize, titleFont, availableTextWidth)
-				local descH = measureTextHeight(descText, descSize, descFont, availableTextWidth)
-
-				-- minimal title height fallback
-				if titleH < 16 then titleH = 16 end
-
-				-- compute collapsedHeight (title area + description area + paddings)
-				collapsedHeight = math.ceil(titleTopPadding + titleH + titleBottomPadding)
-				-- include description only if it exists and not folded
-				if descText and descText ~= "" then
-					collapsedHeight = collapsedHeight + descH + controlTopPadding
-				end
-
-				-- ensure a minimum to comfortably contain dropdown control (like original 34)
-				if collapsedHeight < 34 then collapsedHeight = 34 end
-
-				-- set initial frame size (if not open and not folded)
-				if not Dropdown.Opened and not Dropdown.Folded then
-					DropdownFrame.Frame.Size = UDim2.new(1, 0, 0, collapsedHeight)
-				end
-
-				-- re-position listFrame to sit below the collapsed frame
-				listFrame.Position = UDim2.new(0, 5, 0, collapsedHeight)
-			end)
-		end
-
-		-- call once and also after a small delay to let UI load
-		recomputeCollapsedHeight()
-		delay(0.02, recomputeCollapsedHeight)
-
 		-- expose methods
 		function Dropdown:Display()
 			updateDisplayText()
-			-- remeasure if texts changed via SetTitle/SetDesc
-			recomputeCollapsedHeight()
 		end
 
 		function Dropdown:GetActiveValues()
@@ -3297,7 +3173,7 @@ ElementsTable.Dropdown = (function()
 		end
 
 		function Dropdown:Open()
-			if Dropdown.Opened or Dropdown.Folded then return end
+			if Dropdown.Opened then return end
 			Dropdown.Opened = true
 
 			-- rebuild list to ensure it's current
@@ -3336,46 +3212,7 @@ ElementsTable.Dropdown = (function()
 			end)
 		end
 
-		-- Fold/unfold logic
-		local function setFolded(state)
-			if state == Dropdown.Folded then return end
-			Dropdown.Folded = state
-			-- rotate caret
-			foldBtn.Text = state and "▾" or "▸"
-			-- if folding, close open list
-			if state then
-				Dropdown:Close()
-				-- hide controls and description (keep title visible)
-				if DropdownFrame.DescLabel then DropdownFrame.DescLabel.Visible = false end
-				DropdownInner.Visible = false
-				listFrame.Visible = false
-				-- set frame to only title height (measure title)
-				local containerWidth = (self.Container and self.Container.AbsoluteSize and self.Container.AbsoluteSize.X) or 300
-				local availableTextWidth = math.max(40, containerWidth - 170)
-				local titleText = Config.Title or (DropdownFrame.TitleLabel and DropdownFrame.TitleLabel.Text) or ""
-				local titleSize = (DropdownFrame.TitleLabel and DropdownFrame.TitleLabel.TextSize) or 14
-				local titleFont = (DropdownFrame.TitleLabel and DropdownFrame.TitleLabel.Font) or Enum.Font.Gotham
-				local titleH = measureTextHeight(titleText, titleSize, titleFont, availableTextWidth)
-				if titleH < 16 then titleH = 16 end
-				local targetH = math.ceil(titleTopPadding + titleH + titleBottomPadding)
-				if targetH < 30 then targetH = 30 end
-				TweenService:Create(DropdownFrame.Frame, TweenInfo.new(0.18), {Size = UDim2.new(1, 0, 0, targetH)}):Play()
-			else
-				-- restore description and control
-				if DropdownFrame.DescLabel then DropdownFrame.DescLabel.Visible = true end
-				DropdownInner.Visible = true
-				-- recompute collapsedHeight and animate to it
-				recomputeCollapsedHeight()
-				TweenService:Create(DropdownFrame.Frame, TweenInfo.new(0.18), {Size = UDim2.new(1, 0, 0, collapsedHeight)}):Play()
-			end
-		end
-
-		-- wire fold button
-		foldBtn.MouseButton1Click:Connect(function()
-			setFolded(not Dropdown.Folded)
-		end)
-
-		-- close when clicking outside (keeps behavior similar to original)
+		-- close when clicking outside (optional, keeps behavior similar to original)
 		local outsideConn
 		outsideConn = Creator.AddSignal(UserInputService.InputBegan, function(inp)
 			if not Dropdown.Opened then return end
