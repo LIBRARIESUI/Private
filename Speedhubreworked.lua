@@ -3421,28 +3421,37 @@ ElementsTable.StatusBox = (function()
 	function Element:New(Idx, Config)
 		Config = Config or {}
 
-		local titleText = Config.Title or "Status"
+		local titleText   = Config.Title or "Status"
 		local initialText = tostring(Config.Default or "")
-		local textColor = Config.TextColor or Color3.fromRGB(230, 230, 230)
+		local textColor   = Config.TextColor or Color3.fromRGB(230, 230, 230)
 
-		-- Create the element container (matches dropdown pattern)
+		local maxLines  = tonumber(Config.MaxLines)      -- nil = unlimited
+		local minHeight = Config.MinHeight or 80
+		local maxHeight = Config.MaxHeight or 260
+
+		local Lines = {}
+
+		-- Base element
 		local StatusFrame = Components.Element(titleText, Config.Description, self.Container, false, Config)
-		-- optional: keep description label sizing consistent with other elements
+
 		if StatusFrame.DescLabel then
 			StatusFrame.DescLabel.Size = UDim2.new(1, -170, 0, 14)
 		end
 
+		-- Container
 		local container = Instance.new("Frame")
 		container.Name = "StatusBox"
 		container.Parent = StatusFrame.Frame
 		container.BackgroundColor3 = _G.Primary
 		container.BackgroundTransparency = 0.8
-		container.Size = UDim2.new(1, 0, 0, 180)
+		container.Size = UDim2.new(1, 0, 0, minHeight)
+		container.ClipsDescendants = true
 
 		local corner = Instance.new("UICorner")
-		corner.Parent = container
 		corner.CornerRadius = UDim.new(0, 8)
+		corner.Parent = container
 
+		-- Title
 		local title = Instance.new("TextLabel")
 		title.Parent = container
 		title.BackgroundTransparency = 1
@@ -3454,6 +3463,7 @@ ElementsTable.StatusBox = (function()
 		title.TextSize = 12
 		title.TextXAlignment = Enum.TextXAlignment.Left
 
+		-- Scroll frame (BOTH AXES ENABLED)
 		local scroll = Instance.new("ScrollingFrame")
 		scroll.Parent = container
 		scroll.Name = "StatusScroll"
@@ -3464,9 +3474,14 @@ ElementsTable.StatusBox = (function()
 		scroll.Size = UDim2.new(1, -16, 1, -38)
 		scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 		scroll.ScrollBarThickness = 6
+		scroll.ScrollBarImageTransparency = 1
 		scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
+		scroll.HorizontalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+		scroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+		scroll.ScrollingDirection = Enum.ScrollingDirection.XY
 		scroll.ClipsDescendants = true
 
+		-- Text content
 		local content = Instance.new("TextLabel")
 		content.Parent = scroll
 		content.Name = "StatusContent"
@@ -3474,80 +3489,143 @@ ElementsTable.StatusBox = (function()
 		content.Position = UDim2.new(0, 0, 0, 0)
 		content.Size = UDim2.new(0, 0, 0, 0)
 		content.Font = Enum.Font.Code
-		content.TextWrapped = false
+		content.TextWrapped = false -- REQUIRED for horizontal scrolling
 		content.TextXAlignment = Enum.TextXAlignment.Left
 		content.TextYAlignment = Enum.TextYAlignment.Top
 		content.TextColor3 = textColor
 		content.TextSize = 15
-		content.Text = initialText
+		content.RichText = false
+		content.Text = ""
 
-		local function refreshCanvas()
-			local txt = tostring(content.Text or "")
-			local size = TextService:GetTextSize(txt, content.TextSize, content.Font, Vector2.new(1e6, 1e6))
-			local padX = 10
-			local padY = 6
-			content.Size = UDim2.new(0, math.max(200, math.ceil(size.X)), 0, math.max(30, math.ceil(size.Y)))
-			-- CanvasSize uses absolute sizes so set with content.AbsoluteSize after waiting a heartbeat where needed.
-			scroll.CanvasSize = UDim2.new(0, content.AbsoluteSize.X + padX, 0, content.AbsoluteSize.Y + padY)
+		-- =========================
+		-- Internal helpers
+		-- =========================
+
+		local function resizeContainer()
+			RunService.Heartbeat:Wait()
+
+			local neededHeight = content.AbsoluteSize.Y + 38
+			local targetHeight = math.clamp(neededHeight, minHeight, maxHeight)
+
+			container.Size = UDim2.new(1, 0, 0, targetHeight)
+
+			-- Show scrollbars only when needed
+			scroll.ScrollBarImageTransparency =
+				(neededHeight > maxHeight or content.AbsoluteSize.X > scroll.AbsoluteSize.X)
+				and 0 or 1
 		end
 
-		-- ensure initial layout measures are available
-		RunService.Heartbeat:Wait()
-		refreshCanvas()
+		local function refreshCanvas()
+			local text = content.Text ~= "" and content.Text or " "
+			local size = TextService:GetTextSize(
+				text,
+				content.TextSize,
+				content.Font,
+				Vector2.new(1e6, 1e6)
+			)
+
+			local padX, padY = 12, 8
+
+			content.Size = UDim2.new(
+				0, math.ceil(size.X),
+				0, math.ceil(size.Y)
+			)
+
+			scroll.CanvasSize = UDim2.new(
+				0, content.AbsoluteSize.X + padX,
+				0, content.AbsoluteSize.Y + padY
+			)
+
+			resizeContainer()
+		end
+
+		-- =========================
+		-- Public API
+		-- =========================
 
 		local Status = {}
 
-		-- expose some helpers similar to dropdown pattern
 		Status.SetTitle = StatusFrame.SetTitle
-		Status.SetDesc = StatusFrame.SetDesc
-		Status.Visible = StatusFrame.Visible
+		Status.SetDesc  = StatusFrame.SetDesc
+		Status.Visible  = StatusFrame.Visible
 		Status.Elements = StatusFrame
 
 		function Status.Set(_, newText)
-			content.Text = tostring(newText or "")
-			-- wait a frame to let Gui update before measuring AbsoluteSize
+			table.clear(Lines)
+
+			for line in tostring(newText or ""):gmatch("[^\n]+") do
+				table.insert(Lines, line)
+			end
+
+			if maxLines then
+				while #Lines > maxLines do
+					table.remove(Lines, 1)
+				end
+			end
+
+			content.Text = table.concat(Lines, "\n")
 			RunService.Heartbeat:Wait()
 			refreshCanvas()
 		end
 
 		function Status.Append(_, moreText)
-			content.Text = content.Text .. tostring(moreText or "")
-			-- refresh and then scroll to bottom/right
+			for line in tostring(moreText or ""):gmatch("[^\n]+") do
+				table.insert(Lines, line)
+			end
+
+			if maxLines then
+				while #Lines > maxLines do
+					table.remove(Lines, 1)
+				end
+			end
+
+			content.Text = table.concat(Lines, "\n")
+
 			RunService.Heartbeat:Wait()
 			refreshCanvas()
+
 			RunService.Heartbeat:Wait()
-			pcall(function()
-				scroll.CanvasPosition = Vector2.new(
-					math.max(0, content.AbsoluteSize.X - scroll.AbsoluteSize.X),
-					math.max(0, content.AbsoluteSize.Y - scroll.AbsoluteSize.Y)
-				)
-			end)
+			scroll.CanvasPosition = Vector2.new(
+				math.max(0, content.AbsoluteSize.X - scroll.AbsoluteSize.X),
+				math.max(0, content.AbsoluteSize.Y - scroll.AbsoluteSize.Y)
+			)
 		end
 
-		function Status.Clear(_)
+		function Status.Clear()
+			table.clear(Lines)
 			content.Text = ""
 			RunService.Heartbeat:Wait()
 			refreshCanvas()
 		end
 
-		function Status.GetText(_)
+		function Status.GetText()
 			return content.Text
 		end
 
+		function Status.GetLineCount()
+			return #Lines
+		end
+
+		-- 🎨 Runtime text color control
 		function Status.SetColor(_, clr)
 			if typeof(clr) == "Color3" then
 				content.TextColor3 = clr
 			end
 		end
 
-		function Status.Destroy(_)
+		function Status.Destroy()
 			StatusFrame:Destroy()
 			Library.Options[Idx] = nil
 		end
 
-		-- store the API in library options like other elements
-		Library.Options[Idx] = Status
+		-- Init
+		if initialText ~= "" then
+			Status:Set(initialText)
+		else
+			refreshCanvas()
+		end
 
+		Library.Options[Idx] = Status
 		return Status
 	end
 
