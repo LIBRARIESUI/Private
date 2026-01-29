@@ -3414,229 +3414,133 @@ ElementsTable.Dropdown = (function()
 end)()
 
 ElementsTable.StatusBox = (function()
-	local Element = {}
-	Element.__index = Element
-	Element.__type = "StatusBox"
+    local Element = {}
+    Element.__index = Element
+    Element.__type = "StatusBox"
 
-	function Element:New(Idx, Config)
-		Config = Config or {}
+    function Element:New(Idx, Config)
+        Config = Config or {}
 
-		local titleText   = Config.Title or "Status"
-		local initialText = tostring(Config.Default or "")
-		local textColor   = Config.TextColor or Color3.fromRGB(230, 230, 230)
+        local titleText   = Config.Title or "Status"
+        local initialText = tostring(Config.Default or "")
+        local fixedHeight = Config.Height or 180  -- fixed size
 
-		local maxLines  = tonumber(Config.MaxLines)      -- nil = unlimited
-		local minHeight = Config.MinHeight or 80
-		local maxHeight = Config.MaxHeight or 260
+        local StatusFrame = Components.Element(titleText, Config.Description, self.Container, false, Config)
+        if StatusFrame.DescLabel then
+            StatusFrame.DescLabel.Size = UDim2.new(1, -170, 0, 14)
+        end
 
-		local Lines = {}
+        local container = Instance.new("Frame")
+        container.Name = "StatusBox"
+        container.Parent = StatusFrame.Frame
+        container.BackgroundColor3 = _G.Primary
+        container.BackgroundTransparency = 0.8
+        container.Size = UDim2.new(1, 0, 0, fixedHeight)
+        container.ClipsDescendants = true
 
-		-- Base element
-		local StatusFrame = Components.Element(titleText, Config.Description, self.Container, false, Config)
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = container
 
-		if StatusFrame.DescLabel then
-			StatusFrame.DescLabel.Size = UDim2.new(1, -170, 0, 14)
-		end
+        local title = Instance.new("TextLabel")
+        title.Parent = container
+        title.BackgroundTransparency = 1
+        title.Position = UDim2.new(0, 10, 0, 6)
+        title.Size = UDim2.new(1, -20, 0, 18)
+        title.Font = Enum.Font.GothamSemibold
+        title.Text = titleText
+        title.TextColor3 = Color3.fromRGB(245, 245, 245)
+        title.TextSize = 12
+        title.TextXAlignment = Enum.TextXAlignment.Left
 
-		-- Container
-		local container = Instance.new("Frame")
-		container.Name = "StatusBox"
-		container.Parent = StatusFrame.Frame
-		container.BackgroundColor3 = _G.Primary
-		container.BackgroundTransparency = 0.8
-		container.Size = UDim2.new(1, 0, 0, minHeight)
-		container.ClipsDescendants = true
+        local scroll = Instance.new("ScrollingFrame")
+        scroll.Parent = container
+        scroll.Name = "StatusScroll"
+        scroll.Active = true
+        scroll.BackgroundTransparency = 1
+        scroll.BorderSizePixel = 0
+        scroll.Position = UDim2.new(0, 8, 0, 30)
+        scroll.Size = UDim2.new(1, -16, 1, -38)
+        scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+        scroll.ScrollBarThickness = 6
+        scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
+        scroll.ClipsDescendants = true
 
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, 8)
-		corner.Parent = container
+        local content = Instance.new("TextLabel")
+        content.Parent = scroll
+        content.Name = "StatusContent"
+        content.BackgroundTransparency = 1
+        content.Position = UDim2.new(0, 0, 0, 0)
+        content.Size = UDim2.new(0, 0, 0, 0)
+        content.Font = Enum.Font.Code
+        content.TextWrapped = false
+        content.TextXAlignment = Enum.TextXAlignment.Left
+        content.TextYAlignment = Enum.TextYAlignment.Top
+        content.TextColor3 = Color3.fromRGB(230, 230, 230)
+        content.TextSize = 15
+        content.Text = initialText
 
-		-- Title
-		local title = Instance.new("TextLabel")
-		title.Parent = container
-		title.BackgroundTransparency = 1
-		title.Position = UDim2.new(0, 10, 0, 6)
-		title.Size = UDim2.new(1, -20, 0, 18)
-		title.Font = Enum.Font.GothamSemibold
-		title.Text = titleText
-		title.TextColor3 = Color3.fromRGB(245, 245, 245)
-		title.TextSize = 12
-		title.TextXAlignment = Enum.TextXAlignment.Left
+        local function refreshCanvas()
+            local txt = tostring(content.Text or "")
+            local size = TextService:GetTextSize(txt, content.TextSize, content.Font, Vector2.new(1e6, 1e6))
+            local padX, padY = 12, 8
+            content.Size = UDim2.new(0, math.max(200, math.ceil(size.X)), 0, math.max(30, math.ceil(size.Y)))
+            scroll.CanvasSize = UDim2.new(0, content.AbsoluteSize.X + padX, 0, content.AbsoluteSize.Y + padY)
+            scroll.ScrollBarImageTransparency = (content.AbsoluteSize.X <= scroll.AbsoluteSize.X and content.AbsoluteSize.Y <= scroll.AbsoluteSize.Y) and 1 or 0
+        end
 
-		-- Scroll frame (BOTH AXES ENABLED)
-		local scroll = Instance.new("ScrollingFrame")
-		scroll.Parent = container
-		scroll.Name = "StatusScroll"
-		scroll.Active = true
-		scroll.BackgroundTransparency = 1
-		scroll.BorderSizePixel = 0
-		scroll.Position = UDim2.new(0, 8, 0, 30)
-		scroll.Size = UDim2.new(1, -16, 1, -38)
-		scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-		scroll.ScrollBarThickness = 6
-		scroll.ScrollBarImageTransparency = 1
-		scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
-		scroll.HorizontalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-		scroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-		scroll.ScrollingDirection = Enum.ScrollingDirection.XY
-		scroll.ClipsDescendants = true
+        RunService.Heartbeat:Wait()
+        refreshCanvas()
 
-		-- Text content
-		local content = Instance.new("TextLabel")
-		content.Parent = scroll
-		content.Name = "StatusContent"
-		content.BackgroundTransparency = 1
-		content.Position = UDim2.new(0, 0, 0, 0)
-		content.Size = UDim2.new(0, 0, 0, 0)
-		content.Font = Enum.Font.Code
-		content.TextWrapped = false -- REQUIRED for horizontal scrolling
-		content.TextXAlignment = Enum.TextXAlignment.Left
-		content.TextYAlignment = Enum.TextYAlignment.Top
-		content.TextColor3 = textColor
-		content.TextSize = 15
-		content.RichText = false
-		content.Text = ""
+        local Status = {}
+        Status.SetTitle = StatusFrame.SetTitle
+        Status.SetDesc  = StatusFrame.SetDesc
+        Status.Visible  = StatusFrame.Visible
+        Status.Elements = StatusFrame
 
-		-- =========================
-		-- Internal helpers
-		-- =========================
+        function Status.Set(_, newText)
+            content.Text = tostring(newText or "")
+            RunService.Heartbeat:Wait()
+            refreshCanvas()
+        end
 
-		local function resizeContainer()
-			RunService.Heartbeat:Wait()
+        function Status.Append(_, moreText)
+            content.Text = content.Text .. tostring(moreText or "")
+            RunService.Heartbeat:Wait()
+            refreshCanvas()
+            RunService.Heartbeat:Wait()
+            scroll.CanvasPosition = Vector2.new(
+                math.max(0, content.AbsoluteSize.X - scroll.AbsoluteSize.X),
+                math.max(0, content.AbsoluteSize.Y - scroll.AbsoluteSize.Y)
+            )
+        end
 
-			local neededHeight = content.AbsoluteSize.Y + 38
-			local targetHeight = math.clamp(neededHeight, minHeight, maxHeight)
+        function Status.Clear()
+            content.Text = ""
+            RunService.Heartbeat:Wait()
+            refreshCanvas()
+        end
 
-			container.Size = UDim2.new(1, 0, 0, targetHeight)
+        function Status.GetText()
+            return content.Text
+        end
 
-			-- Show scrollbars only when needed
-			scroll.ScrollBarImageTransparency =
-				(neededHeight > maxHeight or content.AbsoluteSize.X > scroll.AbsoluteSize.X)
-				and 0 or 1
-		end
+        function Status.Destroy()
+            StatusFrame:Destroy()
+            Library.Options[Idx] = nil
+        end
 
-		local function refreshCanvas()
-	local text = content.Text ~= "" and content.Text or " "
-	local bounds = TextService:GetTextSize(
-		text,
-		content.TextSize,
-		content.Font,
-		Vector2.new(scroll.AbsoluteSize.X, math.huge)
-	)
+        if initialText ~= "" then
+            Status:Set(initialText)
+        else
+            refreshCanvas()
+        end
 
-	local padX, padY = 12, 8
+        Library.Options[Idx] = Status
+        return Status
+    end
 
-	content.Size = UDim2.new(
-		0, bounds.X,
-		0, bounds.Y
-	)
-
-	scroll.CanvasSize = UDim2.new(
-		0, bounds.X + padX,
-		0, bounds.Y + padY
-	)
-
-	local desiredHeight = bounds.Y + 38
-	local clampedHeight = math.clamp(desiredHeight, minHeight, maxHeight)
-
-	container.Size = UDim2.new(1, 0, 0, clampedHeight)
-
-	scroll.ScrollBarImageTransparency =
-		(bounds.Y > scroll.AbsoluteSize.Y or bounds.X > scroll.AbsoluteSize.X)
-		and 0 or 1
-end
-
-		-- =========================
-		-- Public API
-		-- =========================
-
-		local Status = {}
-
-		Status.SetTitle = StatusFrame.SetTitle
-		Status.SetDesc  = StatusFrame.SetDesc
-		Status.Visible  = StatusFrame.Visible
-		Status.Elements = StatusFrame
-
-		function Status.Set(_, newText)
-			table.clear(Lines)
-
-			for line in tostring(newText or ""):gmatch("[^\n]+") do
-				table.insert(Lines, line)
-			end
-
-			if maxLines then
-				while #Lines > maxLines do
-					table.remove(Lines, 1)
-				end
-			end
-
-			content.Text = table.concat(Lines, "\n")
-			RunService.Heartbeat:Wait()
-			refreshCanvas()
-		end
-
-		function Status.Append(_, moreText)
-			for line in tostring(moreText or ""):gmatch("[^\n]+") do
-				table.insert(Lines, line)
-			end
-
-			if maxLines then
-				while #Lines > maxLines do
-					table.remove(Lines, 1)
-				end
-			end
-
-			content.Text = table.concat(Lines, "\n")
-
-			RunService.Heartbeat:Wait()
-			refreshCanvas()
-
-			RunService.Heartbeat:Wait()
-			scroll.CanvasPosition = Vector2.new(
-				math.max(0, content.AbsoluteSize.X - scroll.AbsoluteSize.X),
-				math.max(0, content.AbsoluteSize.Y - scroll.AbsoluteSize.Y)
-			)
-		end
-
-		function Status.Clear()
-			table.clear(Lines)
-			content.Text = ""
-			RunService.Heartbeat:Wait()
-			refreshCanvas()
-		end
-
-		function Status.GetText()
-			return content.Text
-		end
-
-		function Status.GetLineCount()
-			return #Lines
-		end
-
-		-- 🎨 Runtime text color control
-		function Status.SetColor(_, clr)
-			if typeof(clr) == "Color3" then
-				content.TextColor3 = clr
-			end
-		end
-
-		function Status.Destroy()
-			StatusFrame:Destroy()
-			Library.Options[Idx] = nil
-		end
-
-		-- Init
-		if initialText ~= "" then
-			Status:Set(initialText)
-		else
-			refreshCanvas()
-		end
-
-		Library.Options[Idx] = Status
-		return Status
-	end
-
-	return Element
+    return Element
 end)()
 
 ElementsTable.Paragraph = (function()
